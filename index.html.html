@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="id" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Delivery Analytics Dashboard - High Value Shipment Tracking</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS (xlsx.full.min.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --bg-dark-navy: #0b132b;
+            --bg-card: #1c2541;
+            --border-color: #3a506b;
+            --accent-blue: #4ea8de;
+            --accent-glow: rgba(78, 168, 222, 0.25);
+            --danger-red: #e63946;
+            --warning-orange: #f4a261;
+            --success-green: #2a9d8f;
+        }
+
+        body {
+            background-color: var(--bg-dark-navy);
+            color: #f8f9fa;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+        }
+
+        .gradient-header {
+            background: linear-gradient(135deg, #1c2541 0%, #0b132b 50%, #1d3557 100%);
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .card-modern {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .card-modern:hover {
+            box-shadow: 0 12px 32px var(--accent-glow);
+        }
+
+        .kpi-card {
+            border-left: 4px solid var(--accent-blue);
+        }
+
+        .kpi-card.warning {
+            border-left: 4px solid var(--warning-orange);
+        }
+
+        .kpi-card.danger {
+            border-left: 4px solid var(--danger-red);
+        }
+
+        .table-container {
+            max-height: 550px;
+            overflow-y: auto;
+            border-radius: 8px;
+        }
+
+        thead.sticky-header th {
+            position: sticky;
+            top: 0;
+            background-color: #151d30 !important;
+            z-index: 10;
+            box-shadow: inset 0 -2px 0 var(--border-color);
+        }
+
+        .high-value-row {
+            background-color: rgba(230, 57, 70, 0.15) !important;
+            border-left: 4px solid var(--danger-red);
+        }
+
+        .badge-hv {
+            background-color: var(--danger-red);
+            color: white;
+            font-weight: 600;
+            animation: pulse-badge 2s infinite;
+        }
+
+        @keyframes pulse-badge {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(11, 19, 43, 0.85);
+            backdrop-filter: blur(5px);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b132b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3a506b;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4ea8de;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay d-none">
+        <div class="spinner-border text-info mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
+        <h5 id="loadingText" class="text-light fw-bold">Memproses File Excel...</h5>
+        <div class="progress w-25 mt-2" style="height: 6px;">
+            <div id="loadingProgress" class="progress-bar progress-bar-striped progress-bar-animated bg-info" style="width: 100%"></div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+        <div id="liveToast" class="toast align-items-center text-bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div id="toastBody" class="toast-body fw-semibold">
+                    Notifikasi berhasil.
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="gradient-header py-4 mb-4">
+        <div class="container-fluid px-4">
+            <div class="row align-items-center justify-content-between">
+                <div class="col-md-7">
+                    <h2 class="fw-bold mb-1 text-light"><i class="fas fa-shield-alt text-info me-2"></i>High Value Shipment Tracking Dashboard</h2>
+                    <p class="text-secondary mb-0">Operational Risk Intelligence & Last-Mile Delivery Analytics</p>
+                </div>
+                <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                    <label for="excelFileInput" class="btn btn-info fw-bold px-3 py-2 shadow-sm me-2" style="cursor: pointer;">
+                        <i class="fas fa-file-excel me-2"></i>Upload Excel
+                    </label>
+                    <input type="file" id="excelFileInput" class="d-none" accept=".xlsx, .xls">
+                    
+                    <button id="exportBtn" class="btn btn-outline-light fw-semibold px-3 py-2 shadow-sm me-2" disabled>
+                        <i class="fas fa-file-export me-2"></i>Export Filtered (Detail AWB)
+                    </button>
+                    
+                    <button id="resetBtn" class="btn btn-outline-secondary fw-semibold px-3 py-2 shadow-sm">
+                        <i class="fas fa-undo me-2"></i>Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="container-fluid px-4 pb-5">
+
+        <!-- Initial Empty State -->
+        <div id="emptyState" class="row py-5">
+            <div class="col-12 text-center py-5 card-modern">
+                <i class="fas fa-file-excel fa-4x text-muted mb-3"></i>
+                <h3 class="text-light fw-bold">Belum Ada Data yang Dimuat</h3>
+                <p class="text-secondary mb-4">Silakan klik tombol <strong>Upload Excel</strong> di atas untuk mulai menganalisis data pengiriman.</p>
+                <label for="excelFileInput" class="btn btn-info btn-lg fw-bold px-4" style="cursor: pointer;">
+                    <i class="fas fa-cloud-upload-alt me-2"></i>Pilih File Excel (.xlsx / .xls)
+                </label>
+            </div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div id="dashboardContent" class="d-none">
+
+            <!-- KPI Cards Row -->
+            <div class="row g-4 mb-4">
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-modern kpi-card p-3">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <span class="text-secondary small fw-semibold text-uppercase">Total Records</span>
+                                <h3 id="kpiTotalRecords" class="fw-bold text-light mb-0 mt-1">0</h3>
+                                <small class="text-info"><i class="fas fa-database me-1"></i>Deduplicated AWB</small>
+                            </div>
+                            <div class="fs-2 text-info bg-dark bg-opacity-50 p-3 rounded-circle">
+                                <i class="fas fa-boxes"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-modern kpi-card warning p-3">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <span class="text-secondary small fw-semibold text-uppercase">Total AWB Volume</span>
+                                <h3 id="kpiTotalVolume" class="fw-bold text-light mb-0 mt-1">0</h3>
+                                <small class="text-warning"><i class="fas fa-shipping-fast me-1"></i>Jumlah Paket</small>
+                            </div>
+                            <div class="fs-2 text-warning bg-dark bg-opacity-50 p-3 rounded-circle">
+                                <i class="fas fa-box"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-modern kpi-card danger p-3">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <span class="text-secondary small fw-semibold text-uppercase">Total Declared Value</span>
+                                <h3 id="kpiTotalValue" class="fw-bold text-light mb-0 mt-1">Rp 0</h3>
+                                <small class="text-danger"><i class="fas fa-money-bill-wave me-1"></i>Nilai Barang</small>
+                            </div>
+                            <div class="fs-2 text-danger bg-dark bg-opacity-50 p-3 rounded-circle">
+                                <i class="fas fa-rupiah-sign"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-modern kpi-card p-3">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <span class="text-secondary small fw-semibold text-uppercase">Active Delivery Staging</span>
+                                <h3 id="kpiActiveStaging" class="fw-bold text-light mb-0 mt-1">0</h3>
+                                <small class="text-success"><i class="fas fa-map-marker-alt me-1"></i>Staging Aktif</small>
+                            </div>
+                            <div class="fs-2 text-success bg-dark bg-opacity-50 p-3 rounded-circle">
+                                <i class="fas fa-warehouse"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters Section -->
+            <div class="card card-modern p-4 mb-4">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h5 class="fw-bold text-light mb-0"><i class="fas fa-filter text-info me-2"></i>Filter Interaktif</h5>
+                    <button id="clearFiltersBtn" class="btn btn-sm btn-outline-secondary">Reset Semua Filter</button>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label small text-secondary fw-semibold">Global Search</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-dark border-secondary text-secondary"><i class="fas fa-search"></i></span>
+                            <input type="text" id="filterGlobal" class="form-control bg-dark border-secondary text-light" placeholder="Cari AWB, Staging, ID...">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-secondary fw-semibold">Delivery Staging</label>
+                        <input type="text" id="filterStaging" class="form-control bg-dark border-secondary text-light" placeholder="Cari Delivery Staging...">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-secondary fw-semibold">Latest ID</label>
+                        <input type="text" id="filterLatestId" class="form-control bg-dark border-secondary text-light" placeholder="Cari Latest ID...">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-secondary fw-semibold">Region Deliv</label>
+                        <select id="filterRegion" class="form-select bg-dark border-secondary text-light">
+                            <option value="">Semua Region</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-secondary fw-semibold">Range Declared Value</label>
+                        <select id="filterValueRange" class="form-select bg-dark border-secondary text-light">
+                            <option value="all">Semua Nilai</option>
+                            <option value="under2m">Di bawah 2 Juta (≤ 2.000.000)</option>
+                            <option value="above2m">High Value (&gt; 2.000.000)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label small text-secondary fw-semibold d-flex justify-content-between">
+                            <span>Latest Opcode (Multi-Select)</span>
+                            <span id="opcodeSelectedCount" class="text-info">Semua dipilih</span>
+                        </label>
+                        <div class="dropdown">
+                            <button class="btn btn-dark border-secondary w-100 text-start d-flex justify-content-between align-items-center text-light" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" id="opcodeDropdownBtn">
+                                <span id="opcodeDropdownLabel">Pilih Latest Opcode...</span>
+                                <i class="fas fa-chevron-down small"></i>
+                            </button>
+                            <div class="dropdown-menu w-100 p-2 shadow-lg bg-dark border-secondary" style="max-height: 280px; overflow-y: auto;">
+                                <div class="d-flex justify-content-between mb-2 pb-2 border-bottom border-secondary px-1">
+                                    <button type="button" id="selectAllOpcodes" class="btn btn-xs btn-outline-info py-0 px-2" style="font-size: 12px;">Pilih Semua</button>
+                                    <button type="button" id="deselectAllOpcodes" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 12px;">Hapus Pilihan</button>
+                                </div>
+                                <div id="opcodeCheckboxContainer"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="row g-4 mb-4">
+                <div class="col-lg-8">
+                    <div class="card card-modern p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="fw-bold text-light mb-0"><i class="fas fa-chart-bar text-info me-2"></i>Top Declared Value by Delivery Staging & Latest ID</h5>
+                            <span class="badge bg-secondary">Top 10 Highest</span>
+                        </div>
+                        <div style="height: 350px; position: relative;">
+                            <canvas id="barChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card card-modern p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="fw-bold text-light mb-0"><i class="fas fa-chart-pie text-info me-2"></i>AWB Distribution by Latest Opcode</h5>
+                        </div>
+                        <div style="height: 350px; position: relative;" class="d-flex justify-content-center align-items-center">
+                            <canvas id="donutChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detail Table Section -->
+            <div class="card card-modern p-4">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 gap-3">
+                    <div>
+                        <h5 class="fw-bold text-light mb-1"><i class="fas fa-table text-info me-2"></i>Detail Grouped Data Table</h5>
+                        <p class="text-secondary small mb-0">Menampilkan hasil agregasi berdasarkan Delivery Staging, Latest ID, dan Latest Opcode.</p>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="tableRecordCount" class="badge bg-info text-dark px-3 py-2 fw-bold">0 Records</span>
+                        <button id="exportTableBtn" class="btn btn-success fw-bold btn-sm">
+                            <i class="fas fa-file-excel me-1"></i>Export Filtered (Detail AWB)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-container border border-secondary rounded-3">
+                    <table class="table table-dark table-hover table-striped align-middle mb-0">
+                        <thead class="sticky-header">
+                            <tr>
+                                <th class="cursor-pointer" onclick="sortTable('delivery_staging')" style="cursor: pointer;">Delivery Staging <i class="fas fa-sort small text-muted"></i></th>
+                                <th class="cursor-pointer" onclick="sortTable('latest_id')" style="cursor: pointer;">Latest ID <i class="fas fa-sort small text-muted"></i></th>
+                                <th class="cursor-pointer" onclick="sortTable('latest_op_code')" style="cursor: pointer;">Latest Opcode <i class="fas fa-sort small text-muted"></i></th>
+                                <th class="cursor-pointer text-end" onclick="sortTable('jumlah_awb')" style="cursor: pointer;">Jumlah AWB <i class="fas fa-sort small text-muted"></i></th>
+                                <th class="cursor-pointer text-end" onclick="sortTable('total_declared_value')" style="cursor: pointer;">Total Declared Value <i class="fas fa-sort small text-muted"></i></th>
+                                <th class="cursor-pointer" onclick="sortTable('id_205')" style="cursor: pointer;">205_id <i class="fas fa-sort small text-muted"></i></th>
+                                <th class="text-center">Status HV</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody"></tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination Controls -->
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mt-3 gap-3">
+                    <div class="text-secondary small" id="paginationInfo">Menampilkan 0 dari 0 data</div>
+                    <nav aria-label="Table Navigation">
+                        <ul class="pagination pagination-sm mb-0" id="paginationControls"></ul>
+                    </nav>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Bootstrap JS & Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        let rawDataset = [];
+        let processedDataset = [];
+        let filteredDataset = [];
+        let barChartInstance = null;
+        let donutChartInstance = null;
+
+        let currentPage = 1;
+        let pageSize = 15;
+        let sortColumn = 'total_declared_value';
+        let sortDirection = 'desc';
+
+        const excelFileInput = document.getElementById('excelFileInput');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
+        const emptyState = document.getElementById('emptyState');
+        const dashboardContent = document.getElementById('dashboardContent');
+        const exportBtn = document.getElementById('exportBtn');
+        const exportTableBtn = document.getElementById('exportTableBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        function showToast(message, isSuccess = true) {
+            const toastEl = document.getElementById('liveToast');
+            const toastBody = document.getElementById('toastBody');
+            toastBody.textContent = message;
+            toastEl.className = `toast align-items-center text-bg-${isSuccess ? 'success' : 'danger'} border-0`;
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+        }
+
+        function formatRupiah(number) {
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(number).replace('IDR', 'Rp').trim();
+        }
+
+        function formatNumber(number) {
+            return new Intl.NumberFormat('id-ID').format(number);
+        }
+
+        excelFileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            loadingOverlay.classList.remove('d-none');
+            loadingText.textContent = `Membaca file ${file.name}...`;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonResult = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                    if (jsonResult.length === 0) {
+                        throw new Error("File Excel kosong atau tidak memiliki baris data.");
+                    }
+
+                    const sampleRow = jsonResult[0];
+                    const keys = Object.keys(sampleRow);
+                    const normalizedKeysMap = {};
+                    keys.forEach(k => {
+                        normalizedKeysMap[k.trim().toLowerCase()] = k;
+                    });
+
+                    const getCol = (possibleNames) => {
+                        for (let name of possibleNames) {
+                            if (normalizedKeysMap[name.toLowerCase()]) return normalizedKeysMap[name.toLowerCase()];
+                        }
+                        return null;
+                    };
+
+                    const colMap = {
+                        awb: getCol(['awb', 'no awb', 'resi']),
+                        nik_ss: getCol(['nik ss', 'nik', 'client']),
+                        delivery_staging: getCol(['delivery_staging', 'delivery staging', 'staging']),
+                        latest_id: getCol(['latest_id', 'latest id', 'id terakhir']),
+                        latest_op_code: getCol(['latest_op_code', 'latest opcode', 'opcode', 'latest op code']),
+                        declared_value: getCol(['declared_value', 'declared value', 'value', 'harga barang']),
+                        region_deliv: getCol(['Region Deliv', 'region deliv', 'region delivery', 'region']),
+                        id_205: getCol(['205_id', 'id_205', '205 id'])
+                    };
+
+                    const missing = [];
+                    if (!colMap.awb) missing.push('AWB');
+                    if (!colMap.delivery_staging) missing.push('Delivery Staging');
+                    if (!colMap.latest_id) missing.push('Latest ID');
+                    if (!colMap.latest_op_code) missing.push('Latest Opcode');
+                    if (!colMap.declared_value) missing.push('Declared Value');
+                    if (!colMap.region_deliv) missing.push('Region Deliv');
+
+                    if (missing.length > 0) {
+                        throw new Error(`Kolom wajib berikut tidak ditemukan di Excel: ${missing.join(', ')}`);
+                    }
+
+                    loadingText.textContent = "Memproses dan mendeduplikasi data...";
+
+                    setTimeout(() => {
+                        processRawData(jsonResult, colMap);
+                        loadingOverlay.classList.add('d-none');
+                        emptyState.classList.add('d-none');
+                        dashboardContent.classList.remove('d-none');
+                        exportBtn.disabled = false;
+                        showToast("Upload dan pemrosesan Excel berhasil!", true);
+                    }, 300);
+
+                } catch (error) {
+                    loadingOverlay.classList.add('d-none');
+                    console.error(error);
+                    showToast("Gagal memproses file: " + error.message, false);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function processRawData(data, colMap) {
+            const awbMap = new Map();
+            data.forEach(row => {
+                const awb = String(row[colMap.awb] || '').trim();
+                if (!awb) return;
+
+                const staging = String(row[colMap.delivery_staging] || '-').trim();
+                const latestId = String(row[colMap.latest_id] || '-').trim();
+                const opcode = String(row[colMap.latest_op_code] || '-').trim();
+                const value = parseFloat(row[colMap.declared_value]) || 0;
+                const region = String(row[colMap.region_deliv] || '-').trim();
+                const id205 = colMap.id_205 ? String(row[colMap.id_205] || '-').trim() : '-';
+
+                awbMap.set(awb, {
+                    awb: awb,
+                    delivery_staging: staging,
+                    latest_id: latestId,
+                    latest_op_code: opcode,
+                    declared_value: value,
+                    region_deliv: region,
+                    id_205: id205 === '' ? '-' : id205,
+                    high_value_flag: value > 2000000
+                });
+            });
+
+            rawDataset = Array.from(awbMap.values());
+            buildAggregatedDataset();
+            populateFilterOptions();
+            applyFilters();
+        }
+
+        function buildAggregatedDataset() {
+            const groupMap = new Map();
+
+            rawDataset.forEach(item => {
+                const key = `${item.delivery_staging}||${item.latest_id}||${item.latest_op_code}`;
+                if (!groupMap.has(key)) {
+                    groupMap.set(key, {
+                        delivery_staging: item.delivery_staging,
+                        latest_id: item.latest_id,
+                        latest_op_code: item.latest_op_code,
+                        jumlah_awb: 0,
+                        total_declared_value: 0,
+                        id_205_set: new Set(),
+                        has_high_value: false
+                    });
+                }
+                const group = groupMap.get(key);
+                group.jumlah_awb += 1;
+                group.total_declared_value += item.declared_value;
+                if (item.id_205 && item.id_205 !== '-') {
+                    group.id_205_set.add(item.id_205);
+                }
+                if (item.high_value_flag) {
+                    group.has_high_value = true;
+                }
+            });
+
+            processedDataset = Array.from(groupMap.values()).map(g => ({
+                delivery_staging: g.delivery_staging,
+                latest_id: g.latest_id,
+                latest_op_code: g.latest_op_code,
+                jumlah_awb: g.jumlah_awb,
+                total_declared_value: g.total_declared_value,
+                id_205: g.id_205_set.size > 0 ? Array.from(g.id_205_set).join(', ') : '-',
+                has_high_value: g.has_high_value
+            }));
+        }
+
+        let allOpcodesList = [];
+        function populateFilterOptions() {
+            const regions = [...new Set(rawDataset.map(d => d.region_deliv))].sort();
+            const regionSelect = document.getElementById('filterRegion');
+            regionSelect.innerHTML = '<option value="">Semua Region</option>';
+            regions.forEach(reg => {
+                const opt = document.createElement('option');
+                opt.value = reg;
+                opt.textContent = reg;
+                regionSelect.appendChild(opt);
+            });
+
+            allOpcodesList = [...new Set(rawDataset.map(d => String(d.latest_op_code)))].sort((a,b) => a.localeCompare(b, undefined, {numeric: true}));
+            const container = document.getElementById('opcodeCheckboxContainer');
+            container.innerHTML = '';
+            
+            allOpcodesList.forEach(op => {
+                const div = document.createElement('div');
+                div.className = 'form-check px-2 py-1';
+                div.innerHTML = `
+                    <input class="form-check-input opcode-checkbox" type="checkbox" value="${op}" id="opCheck_${op}" checked>
+                    <label class="form-check-label text-light w-100" style="cursor: pointer;" for="opCheck_${op}">
+                        Opcode ${op}
+                    </label>
+                `;
+                container.appendChild(div);
+            });
+
+            updateOpcodeDropdownLabel();
+
+            document.querySelectorAll('.opcode-checkbox').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    updateOpcodeDropdownLabel();
+                    applyFilters();
+                });
+            });
+        }
+
+        function updateOpcodeDropdownLabel() {
+            const checked = document.querySelectorAll('.opcode-checkbox:checked');
+            const total = document.querySelectorAll('.opcode-checkbox').length;
+            const label = document.getElementById('opcodeDropdownLabel');
+            const countSpan = document.getElementById('opcodeSelectedCount');
+
+            if (checked.length === total || checked.length === 0) {
+                label.textContent = "Semua Opcode Dipilih (" + total + ")";
+                countSpan.textContent = "Semua dipilih";
+            } else {
+                label.textContent = `${checked.length} dari ${total} Opcode Dipilih`;
+                countSpan.textContent = `${checked.length} terpilih`;
+            }
+        }
+
+        document.getElementById('selectAllOpcodes').addEventListener('click', () => {
+            document.querySelectorAll('.opcode-checkbox').forEach(cb => cb.checked = true);
+            updateOpcodeDropdownLabel();
+            applyFilters();
+        });
+
+        document.getElementById('deselectAllOpcodes').addEventListener('click', () => {
+            document.querySelectorAll('.opcode-checkbox').forEach(cb => cb.checked = false);
+            updateOpcodeDropdownLabel();
+            applyFilters();
+        });
+
+        ['filterGlobal', 'filterStaging', 'filterLatestId', 'filterRegion', 'filterValueRange'].forEach(id => {
+            document.getElementById(id).addEventListener('input', applyFilters);
+            document.getElementById(id).addEventListener('change', applyFilters);
+        });
+
+        document.getElementById('clearFiltersBtn').addEventListener('click', resetAllFilters);
+        document.getElementById('resetBtn').addEventListener('click', resetAllFilters);
+
+        function resetAllFilters() {
+            document.getElementById('filterGlobal').value = '';
+            document.getElementById('filterStaging').value = '';
+            document.getElementById('filterLatestId').value = '';
+            document.getElementById('filterRegion').value = '';
+            document.getElementById('filterValueRange').value = 'all';
+            document.querySelectorAll('.opcode-checkbox').forEach(cb => cb.checked = true);
+            updateOpcodeDropdownLabel();
+            applyFilters();
+            showToast("Filter berhasil direset.", true);
+        }
+
+        function applyFilters() {
+            const globalQ = document.getElementById('filterGlobal').value.toLowerCase();
+            const stagingQ = document.getElementById('filterStaging').value.toLowerCase();
+            const latestIdQ = document.getElementById('filterLatestId').value.toLowerCase();
+            const regionQ = document.getElementById('filterRegion').value;
+            const valueRangeQ = document.getElementById('filterValueRange').value;
+
+            const selectedOpcodes = Array.from(document.querySelectorAll('.opcode-checkbox:checked')).map(cb => cb.value);
+
+            const matchingAwbs = new Set();
+            rawDataset.forEach(item => {
+                if (regionQ && item.region_deliv !== regionQ) return;
+                if (valueRangeQ === 'under2m' && item.declared_value > 2000000) return;
+                if (valueRangeQ === 'above2m' && item.declared_value <= 2000000) return;
+                if (selectedOpcodes.length > 0 && !selectedOpcodes.includes(String(item.latest_op_code))) return;
+                
+                if (stagingQ && !item.delivery_staging.toLowerCase().includes(stagingQ)) return;
+                if (latestIdQ && !item.latest_id.toLowerCase().includes(latestIdQ)) return;
+
+                if (globalQ) {
+                    const matchGlobal = item.awb.toLowerCase().includes(globalQ) ||
+                                        item.delivery_staging.toLowerCase().includes(globalQ) ||
+                                        item.latest_id.toLowerCase().includes(globalQ) ||
+                                        String(item.latest_op_code).toLowerCase().includes(globalQ) ||
+                                        String(item.declared_value).includes(globalQ) ||
+                                        item.region_deliv.toLowerCase().includes(globalQ);
+                    if (!matchGlobal) return;
+                }
+
+                matchingAwbs.add(item.awb);
+            });
+
+            const groupMap = new Map();
+            rawDataset.forEach(item => {
+                if (!matchingAwbs.has(item.awb)) return;
+
+                const key = `${item.delivery_staging}||${item.latest_id}||${item.latest_op_code}`;
+                if (!groupMap.has(key)) {
+                    groupMap.set(key, {
+                        delivery_staging: item.delivery_staging,
+                        latest_id: item.latest_id,
+                        latest_op_code: item.latest_op_code,
+                        jumlah_awb: 0,
+                        total_declared_value: 0,
+                        id_205_set: new Set(),
+                        has_high_value: false
+                    });
+                }
+                const group = groupMap.get(key);
+                group.jumlah_awb += 1;
+                group.total_declared_value += item.declared_value;
+                if (item.id_205 && item.id_205 !== '-') {
+                    group.id_205_set.add(item.id_205);
+                }
+                if (item.high_value_flag) {
+                    group.has_high_value = true;
+                }
+            });
+
+            filteredDataset = Array.from(groupMap.values()).map(g => ({
+                delivery_staging: g.delivery_staging,
+                latest_id: g.latest_id,
+                latest_op_code: g.latest_op_code,
+                jumlah_awb: g.jumlah_awb,
+                total_declared_value: g.total_declared_value,
+                id_205: g.id_205_set.size > 0 ? Array.from(g.id_205_set).join(', ') : '-',
+                has_high_value: g.has_high_value
+            }));
+
+            currentPage = 1;
+            updateKPIs();
+            updateCharts();
+            renderTable();
+        }
+
+        function updateKPIs() {
+            const totalMatchingAwbs = new Set();
+            let totalVal = 0;
+            const stagingSet = new Set();
+
+            rawDataset.forEach(item => {
+                const isIncluded = filteredDataset.some(g => 
+                    g.delivery_staging === item.delivery_staging &&
+                    g.latest_id === item.latest_id &&
+                    g.latest_op_code === item.latest_op_code
+                );
+                if (isIncluded) {
+                    totalMatchingAwbs.add(item.awb);
+                    totalVal += item.declared_value;
+                    stagingSet.add(item.delivery_staging);
+                }
+            });
+
+            const totalVolume = filteredDataset.reduce((sum, g) => sum + g.jumlah_awb, 0);
+
+            document.getElementById('kpiTotalRecords').textContent = formatNumber(totalMatchingAwbs.size);
+            document.getElementById('kpiTotalVolume').textContent = formatNumber(totalVolume);
+            document.getElementById('kpiTotalValue').textContent = formatRupiah(totalVal);
+            document.getElementById('kpiActiveStaging').textContent = formatNumber(stagingSet.size);
+        }
+
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'desc';
+            }
+            renderTable();
+        }
+
+        function renderTable() {
+            filteredDataset.sort((a, b) => {
+                let valA = a[sortColumn];
+                let valB = b[sortColumn];
+
+                if (typeof valA === 'string') {
+                    valA = valA.toLowerCase();
+                    valB = valB.toLowerCase();
+                }
+
+                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            const tbody = document.getElementById('dataTableBody');
+            tbody.innerHTML = '';
+
+            const totalRecords = filteredDataset.length;
+            document.getElementById('tableRecordCount').textContent = `${formatNumber(totalRecords)} Groups`;
+
+            if (totalRecords === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary">Tidak ada data yang sesuai dengan filter.</td></tr>`;
+                document.getElementById('paginationInfo').textContent = "Menampilkan 0 dari 0 data";
+                document.getElementById('paginationControls').innerHTML = '';
+                return;
+            }
+
+            const totalPages = Math.ceil(totalRecords / pageSize);
+            if (currentPage > totalPages) currentPage = totalPages;
+
+            const startIdx = (currentPage - 1) * pageSize;
+            const endIdx = Math.min(startIdx + pageSize, totalRecords);
+            const pageData = filteredDataset.slice(startIdx, endIdx);
+
+            pageData.forEach(row => {
+                const tr = document.createElement('tr');
+                if (row.has_high_value) {
+                    tr.className = 'high-value-row';
+                }
+
+                tr.innerHTML = `
+                    <td class="fw-semibold">${row.delivery_staging}</td>
+                    <td><code>${row.latest_id}</code></td>
+                    <td><span class="badge bg-secondary">Opcode ${row.latest_op_code}</span></td>
+                    <td class="text-end fw-bold">${formatNumber(row.jumlah_awb)}</td>
+                    <td class="text-end fw-semibold text-info">${formatRupiah(row.total_declared_value)}</td>
+                    <td><code>${row.id_205}</code></td>
+                    <td class="text-center">
+                        ${row.has_high_value ? '<span class="badge badge-hv px-2 py-1"><i class="fas fa-exclamation-triangle me-1"></i>HIGH VALUE</span>' : '<span class="text-muted">-</span>'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('paginationInfo').textContent = `Menampilkan ${startIdx + 1} - ${endIdx} dari ${formatNumber(totalRecords)} data`;
+            
+            const paginationUl = document.getElementById('paginationControls');
+            paginationUl.innerHTML = '';
+
+            const prevLi = document.createElement('li');
+            prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            prevLi.innerHTML = `<a class="page-link bg-dark border-secondary text-light" href="#" onclick="changePage(${currentPage - 1}); return false;">Prev</a>`;
+            paginationUl.appendChild(prevLi);
+
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + 4);
+            if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                const li = document.createElement('li');
+                li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+                li.innerHTML = `<a class="page-link bg-dark border-secondary ${i === currentPage ? 'bg-info text-dark fw-bold' : 'text-light'}" href="#" onclick="changePage(${i}); return false;">${i}</a>`;
+                paginationUl.appendChild(li);
+            }
+
+            const nextLi = document.createElement('li');
+            nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            nextLi.innerHTML = `<a class="page-link bg-dark border-secondary text-light" href="#" onclick="changePage(${currentPage + 1}); return false;">Next</a>`;
+            paginationUl.appendChild(nextLi);
+        }
+
+        function changePage(page) {
+            const totalPages = Math.ceil(filteredDataset.length / pageSize);
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            renderTable();
+        }
+
+        function updateCharts() {
+            updateBarChart();
+            updateDonutChart();
+        }
+
+        function updateBarChart() {
+            const ctx = document.getElementById('barChart').getContext('2d');
+            const sortedForBar = [...filteredDataset].sort((a, b) => b.total_declared_value - a.total_declared_value).slice(0, 10);
+            
+            const labels = sortedForBar.map(d => `${d.delivery_staging} (${d.latest_id})`);
+            const dataValues = sortedForBar.map(d => d.total_declared_value);
+
+            if (barChartInstance) {
+                barChartInstance.destroy();
+            }
+
+            const gradient = ctx.createLinearGradient(0, 0, 600, 0);
+            gradient.addColorStop(0, '#4ea8de');
+            gradient.addColorStop(1, '#7209b7');
+
+            barChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Declared Value',
+                        data: dataValues,
+                        backgroundColor: gradient,
+                        borderRadius: 6,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: (tooltipItems) => {
+                                    const item = sortedForBar[tooltipItems[0].dataIndex];
+                                    return `Staging: ${item.delivery_staging} | ID: ${item.latest_id}`;
+                                },
+                                label: (context) => {
+                                    const item = sortedForBar[context.dataIndex];
+                                    return [
+                                        ` Total Declared Value: ${formatRupiah(item.total_declared_value)}`,
+                                        ` Total AWB: ${formatNumber(item.jumlah_awb)} paket`,
+                                        ` Latest Opcode: ${item.latest_op_code}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(58, 80, 107, 0.3)' },
+                            ticks: {
+                                color: '#adb5bd',
+                                callback: (value) => 'Rp ' + (value >= 1000000 ? (value / 1000000).toFixed(1) + 'jt' : value)
+                            }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { color: '#f8f9fa', font: { size: 11 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateDonutChart() {
+            const ctx = document.getElementById('donutChart').getContext('2d');
+            const opcodeMap = {};
+            let totalFilteredAwbs = 0;
+            filteredDataset.forEach(g => {
+                const op = `Opcode ${g.latest_op_code}`;
+                opcodeMap[op] = (opcodeMap[op] || 0) + g.jumlah_awb;
+                totalFilteredAwbs += g.jumlah_awb;
+            });
+
+            const labels = Object.keys(opcodeMap);
+            const dataValues = Object.values(opcodeMap);
+
+            if (donutChartInstance) {
+                donutChartInstance.destroy();
+            }
+
+            const backgroundColors = [
+                '#4ea8de', '#7209b7', '#f72585', '#4cc9f0', '#3a0ca3', 
+                '#f4a261', '#2a9d8f', '#e76f51', '#264653'
+            ];
+
+            donutChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: dataValues,
+                        backgroundColor: backgroundColors.slice(0, labels.length),
+                        borderWidth: 2,
+                        borderColor: '#1c2541'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#f8f9fa', boxWidth: 12, font: { size: 11 } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const val = context.raw;
+                                    const percentage = totalFilteredAwbs > 0 ? ((val / totalFilteredAwbs) * 100).toFixed(1) + '%' : '0%';
+                                    return ` AWB Count: ${formatNumber(val)} (${percentage})`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '65%'
+                }
+            });
+        }
+
+        function exportToExcel() {
+            if (filteredDataset.length === 0) {
+                showToast("Tidak ada data untuk diexport.", false);
+                return;
+            }
+
+            const activeGroupKeys = new Set(filteredDataset.map(g => `${g.delivery_staging}||${g.latest_id}||${g.latest_op_code}`));
+
+            const exportRows = [];
+            let counter = 1;
+
+            rawDataset.forEach(item => {
+                const groupKey = `${item.delivery_staging}||${item.latest_id}||${item.latest_op_code}`;
+                if (activeGroupKeys.has(groupKey)) {
+                    exportRows.push({
+                        "No": counter++,
+                        "AWB": item.awb,
+                        "Declared Value": item.declared_value,
+                        "Delivery Staging": item.delivery_staging,
+                        "Latest ID": item.latest_id,
+                        "Latest Opcode": item.latest_op_code,
+                        "205_id": item.id_205,
+                        "High Value Status": item.high_value_flag ? "HIGH VALUE (>2M)" : "Normal",
+                        "Region Deliv": item.region_deliv
+                    });
+                }
+            });
+
+            exportRows.sort((a, b) => String(a["205_id"]).localeCompare(String(b["205_id"])));
+
+            exportRows.forEach((row, idx) => {
+                row["No"] = idx + 1;
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(exportRows);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Detail AWB per 205_id");
+
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const hh = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            const filename = `High_Value_Shipment_AWB_Detail_${yyyy}${mm}${dd}_${hh}${min}.xlsx`;
+
+            XLSX.writeFile(workbook, filename);
+            showToast(`Export detail AWB berhasil: ${filename}`, true);
+        }
+
+        exportBtn.addEventListener('click', exportToExcel);
+        exportTableBtn.addEventListener('click', exportToExcel);
+    </script>
+</body>
+</html>
